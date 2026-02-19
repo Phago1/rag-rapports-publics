@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+src/rag_public_reports/__init__.py
+src/rag_public_reports/__main__.py
+src/rag_public_reports/config.py
+src/rag_public_reports/ingest.py
+src/rag_public_reports/prompts.py
+src/rag_public_reports/rag.py
+src/rag_public_reports/utils.py
+src/rag_public_reports/vectorstore.py
+src/rag_public_reports.egg-info/PKG-INFO
+src/rag_public_reports.egg-info/SOURCES.txt
+src/rag_public_reports.egg-info/dependency_links.txt
+src/rag_public_reports.egg-info/top_level.txt
+tests/test_splitter.py
