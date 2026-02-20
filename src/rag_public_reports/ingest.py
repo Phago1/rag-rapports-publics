@@ -135,6 +135,35 @@ _PATTERNS_BY_INSTITUTION = {
     "iga":              _PATTERNS_GENERIQUES,   # idem
 }
 
+# Sections à ne jamais découper — elles doivent rester entières
+# pour que le LLM puisse répondre à des questions comme "toutes les recommandations"
+PROTECTED_SECTIONS = [
+    "recommandation",   # capture "recommandation" ET "recommandations"
+    "conclusion",
+    "synthese",         # sans accent — on va normaliser
+    "recapitulatif",    # sans accent aussi
+]
+
+def _is_protected_section(title: str) -> bool:
+    """
+    Retourne True si ce titre correspond à une section à protéger.
+    Insensible à la casse et aux accents.
+    """
+    if not title:
+        return False
+
+    # Normalisation : minuscules + suppression des accents
+    import unicodedata
+    def normalize(s):
+        s = s.lower()
+        s = unicodedata.normalize("NFD", s)           # décompose les caractères accentués
+        s = "".join(c for c in s if unicodedata.category(c) != "Mn")  # supprime les accents
+        return s
+
+    title_normalized = normalize(title)
+
+    return any(keyword in title_normalized for keyword in PROTECTED_SECTIONS)
+
 
 def _get_patterns(institution: str) -> list:
     """
@@ -199,6 +228,14 @@ def _chunk_by_sections(pages: list[Document], institution: str) -> list[Document
             page_content=text,
             metadata={**meta, "section": title or "", "section_index": idx},
         )
+
+        # Sections protégées → on ne redécoupe JAMAIS
+        # même si elles dépassent CHUNK_SIZE * 2
+        if _is_protected_section(title):
+            sections.append(doc)
+            return
+
+        # Sections normales → re-découpage si trop long
         if len(text) > CHUNK_SIZE * 2:
             sub_chunks = recursive_splitter.split_documents([doc])
             for sc in sub_chunks:

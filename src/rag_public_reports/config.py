@@ -57,7 +57,7 @@ CHUNK_OVERLAP = 400
 # ── Retrieval ─────────────────────────────────────────────────────────────────
 # Nombre de chunks renvoyés par la similarity search.
 # 6 est un bon compromis : assez de contexte sans surcharger le prompt de Claude.
-TOP_K = 10
+TOP_K = 15
 
 
 # ── Référentiels métier ───────────────────────────────────────────────────────
