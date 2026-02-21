@@ -82,7 +82,7 @@ KNOWN_THEMES = [
     "logement",
     "sécurité sociale",
     "collectivités territoriales",
-    "IA et numérique",
+    "numérique",
     "intérieur et défense",
     "justice",
 ]

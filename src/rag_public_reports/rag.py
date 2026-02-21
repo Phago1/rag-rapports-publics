@@ -24,7 +24,8 @@ from langchain.chat_models import init_chat_model
 
 from .config import LLM_PROVIDER, LLM_MODEL, TOP_K
 from .vectorstore import get_vector_store, search
-from .prompts import get_rag_prompt, get_synthesis_prompt, format_context
+from .prompts import get_rag_prompt, get_synthesis_prompt, get_redaction_prompt,\
+    format_context
 
 
 def _get_llm():
@@ -33,12 +34,14 @@ def _get_llm():
 
 def answer(
     query: str,
+    notes : str = "",
     filter_institution: str | None = None,
     filter_year: int | None = None,
     filter_theme: str | None = None,
     k: int = TOP_K,
     mode: str = "rag",          # "rag" ou "synthesis"
     verbose: bool = False,
+    vs=None,
 ) -> str:
     """
     Répond à une question en cherchant dans les rapports indexés.
@@ -50,15 +53,20 @@ def answer(
     filter_year        : ex. 2023
     filter_theme       : ex. "finances publiques"
     k                  : nombre de chunks à récupérer
-    mode               : "rag" (réponse factuelle) ou "synthesis" (synthèse multi-rapports)
+    mode               : "rag" (réponse factuelle), "synthesis" (synthèse multi-rapports)\
+    ou "redaction"
     verbose            : affiche les chunks récupérés pour vérifier la qualité du retrieval
     """
-    # 1. Charger le vector store
-    vs = get_vector_store()
+    # Charger le vector store
+    if vs is None:
+        vs = get_vector_store()
 
-    # 2. Chercher les chunks pertinents
+    # Query fusionnée avec les notes de l'utilisateur
+    search_query = f"{query}\n{notes}" if notes else query
+
+    # Chercher les chunks pertinents
     docs = search(
-        vs, query, k=k,
+        vs, search_query, k=k,
         filter_institution=filter_institution,
         filter_year=filter_year,
         filter_theme=filter_theme,
@@ -71,7 +79,7 @@ def answer(
             "(utils.list_ingested_reports())."
         )
 
-    # 3. Affichage debug (optionnel)
+    # Affichage debug (optionnel)
     if verbose:
         print("\n" + "=" * 60)
         print("CHUNKS RÉCUPÉRÉS :")
@@ -83,14 +91,20 @@ def answer(
             print(doc.page_content[:300] + "…")
         print("=" * 60 + "\n")
 
-    # 4. Mise en forme du contexte
+    # Mise en forme du contexte
     context = format_context(docs)
 
-    # 5. Choix du prompt
-    prompt_template = get_synthesis_prompt() if mode == "synthesis" else get_rag_prompt()
-    prompt = prompt_template.invoke({"context": context, "question": query})
+    # Choix du prompt et des variables selon le mode
+    prompt_configs = {
+        "synthesis": (get_synthesis_prompt(), {"context": context, "question": query}),
+        "redaction": (get_redaction_prompt(), {"context": context, "titre": query, "notes": notes or "Aucune note fournie."}),
+        "rag":       (get_rag_prompt(),       {"context": context, "question": query}),
+    }
 
-    # 6. Appel au LLM Gemini
+    prompt_template, variables = prompt_configs.get(mode, prompt_configs["rag"])
+    prompt = prompt_template.invoke(variables)
+
+    # Appel au LLM Gemini
     llm = _get_llm()
     response = llm.invoke(prompt)
 

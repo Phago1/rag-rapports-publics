@@ -199,10 +199,9 @@ def _detect_section_title(text: str, compiled_patterns: list) -> str | None:
 # Stratégie 1 : Chunking par sections
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _chunk_by_sections(pages: list[Document], institution: str) -> list[Document]:
+def _chunk_by_sections(doc: Document, institution: str) -> list[Document]:
     """
-    Découpe le document en respectant les titres de sections.
-    Utilise les patterns adaptés à l'institution.
+    Découpe le document complet en respectant les titres de sections.
     """
     compiled_patterns = _get_patterns(institution)
 
@@ -215,52 +214,45 @@ def _chunk_by_sections(pages: list[Document], institution: str) -> list[Document
 
     sections: list[Document] = []
     current_text = ""
-    current_page_meta = pages[0].metadata.copy() if pages else {}
     current_section_title = None
     section_index = 0
 
-    def _flush_section(text: str, meta: dict, title: str | None, idx: int):
-        """Sauvegarde la section en cours, en la re-découpant si nécessaire."""
+    lines = doc.page_content.split("\n")
+
+    def _flush_section(text: str, title: str | None, idx: int):
         text = text.strip()
         if not text:
             return
-        doc = Document(
+        chunk = Document(
             page_content=text,
-            metadata={**meta, "section": title or "", "section_index": idx},
+            metadata={
+                **doc.metadata,          # conserve source, etc.
+                "section": title or "",
+                "section_index": idx,
+            },
         )
-
-        # Sections protégées → on ne redécoupe JAMAIS
-        # même si elles dépassent CHUNK_SIZE * 2
-        if _is_protected_section(title):
-            sections.append(doc)
-            return
-
-        # Sections normales → re-découpage si trop long
         if len(text) > CHUNK_SIZE * 2:
-            sub_chunks = recursive_splitter.split_documents([doc])
+            sub_chunks = recursive_splitter.split_documents([chunk])
             for sc in sub_chunks:
                 sc.metadata.setdefault("section", title or "")
                 sc.metadata.setdefault("section_index", idx)
             sections.extend(sub_chunks)
         else:
-            sections.append(doc)
+            sections.append(chunk)
 
-    for page in pages:
-        detected = _detect_section_title(page.page_content, compiled_patterns)
+    for line in lines:
+        line_stripped = re.sub(r"\s+", " ", line).strip()  # nettoyage espaces parasites
+        detected = _detect_section_title(line_stripped, compiled_patterns)
 
         if detected and current_text:
-            _flush_section(current_text, current_page_meta, current_section_title, section_index)
+            _flush_section(current_text, current_section_title, section_index)
             section_index += 1
-            current_text = page.page_content
+            current_text = line
             current_section_title = detected
-            current_page_meta = page.metadata.copy()
         else:
-            current_text += "\n\n" + page.page_content
-            if detected and current_section_title is None:
-                current_section_title = detected
+            current_text += "\n" + line
 
-    # Dernière section
-    _flush_section(current_text, current_page_meta, current_section_title, section_index)
+    _flush_section(current_text, current_section_title, section_index)
 
     return sections
 
@@ -340,16 +332,17 @@ def ingest_pdf(
 
     print(f"📄  Chargement : {file_path.name}  [stratégie : {strategy}]")
 
+    doc = _load_pdf_as_single_doc(file_path)
+    print(f"    → {len(doc.page_content)} caractères chargés")
+
     if strategy == "sections":
-        pages = _load_pdf_page_by_page(file_path)
-        print(f"    → {len(pages)} pages chargées")
-        chunks = _chunk_by_sections(pages, institution)
+        chunks = _chunk_by_sections(doc, institution)
     else:
-        doc = _load_pdf_as_single_doc(file_path)
         chunks = _chunk_recursive(doc)
 
     chunks = _add_metadata(chunks, institution, year, title, theme, file_path)
-
+    chunks = [c for c in chunks if len(c.page_content.strip()) > 150]
+    
     # Bilan
     avg_len = sum(len(c.page_content) for c in chunks) // len(chunks) if chunks else 0
     sections_detected = sum(1 for c in chunks if c.metadata.get("section"))

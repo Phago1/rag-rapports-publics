@@ -76,6 +76,43 @@ def get_synthesis_prompt() -> ChatPromptTemplate:
         ("human", SYNTHESIS_HUMAN_PROMPT),
     ])
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Prompt de rédaction de section
+# ─────────────────────────────────────────────────────────────────────────────
+
+REDACTION_SYSTEM_PROMPT = """Tu es un expert en rédaction de rapports institutionnels français, \
+spécialisé dans le style de la Cour des comptes et de l'IGF.
+
+Tu dois rédiger une section de rapport en articulant trois sources :
+1. Le titre de section (si proposé par le rédacteur) et les notes du rédacteur (prioritaires)
+2. Les extraits de rapports existants (pour le contexte et les références)
+3. Tes connaissances générales en complément — mais tu dois alors le signaler explicitement \
+par la mention "(source : externe)"
+
+Structure attendue :
+- Un titre de section (repris ou reformulé à partir du titre fourni)
+- Deux ou trois sous-sections avec sous-titres si le contenu des notes du rédacteur \
+le justifie
+- entre 600 et 800 mots au total (marge de plus ou moins 10%)
+- Ton factuel, administratif et précis — style Cour des comptes et IGF
+- Chiffres et données sourcés
+
+Notes du rédacteur :
+{notes}
+
+Extraits de rapports existants :
+{context}
+"""
+
+REDACTION_HUMAN_PROMPT = "Rédige une section de rapport intitulée : {titre}"
+
+
+def get_redaction_prompt() -> ChatPromptTemplate:
+    """Retourne le prompt de rédaction de section."""
+    return ChatPromptTemplate.from_messages([
+        ("system", REDACTION_SYSTEM_PROMPT),
+        ("human", REDACTION_HUMAN_PROMPT),
+    ])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Formatage du contexte (les chunks récupérés)
