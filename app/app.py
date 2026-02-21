@@ -6,7 +6,7 @@ from rag_public_reports.config import KNOWN_INSTITUTIONS, KNOWN_THEMES
 
 # ─── Configuration de la page ────────────────────────────────────────────────
 st.set_page_config(
-    page_title="Recherche rapports publics - PB",
+    page_title="Recherche rapports publics - appli PB",
     page_icon="📋",
     layout="wide",
 )
@@ -19,7 +19,7 @@ def load_vs():
 vs = load_vs()
 
 # ─── Interface ───────────────────────────────────────────────────────────────
-st.title("📋 Interroger les rapports institutionnels")
+st.title("📋 Appli recherche rapports publics")
 
 # Filtres dans la sidebar
 with st.sidebar:
@@ -29,11 +29,11 @@ with st.sidebar:
     mode = st.selectbox("Mode", ["rag", "synthesis"])
 
 # Zone de question
-question = st.text_input("Ta question", placeholder="Ex : Quelles sont les recommandations sur l'IA ?")
+question = st.text_input("Votre question", placeholder="Ex : Quelles sont les recommandations sur l'IA ?")
 
-if st.button("Envoyer", type="primary"):
+if st.button("Envoi", type="primary"):
     if not question:
-        st.warning("Saisis une question !")
+        st.warning("Saisissez une question")
     else:
         with st.spinner("Recherche en cours..."):
             reponse = answer(
