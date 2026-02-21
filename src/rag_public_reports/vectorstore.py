@@ -3,7 +3,7 @@ vectorstore.py
 --------------
 Crée, charge et interroge le vector store Chroma avec Gemini embeddings.
 
-Chroma stocke sur disque et sur GCS 
+Chroma stocke sur disque et sur GCS
 Utilisation rapide :
     from rag_public_reports.vectorstore import get_vector_store, add_documents
 
@@ -27,7 +27,8 @@ from google.cloud import storage as gcs
 
 def _is_cloud() -> bool:
     """Détecte si on tourne sur Streamlit Cloud."""
-    return os.environ.get("STREAMLIT_SHARING_MODE") == "streamlit_sharing"
+    # Streamlit Cloud monte le code dans /mount/src/
+    return os.path.exists("/mount/src")
 
 def _download_from_gcs() -> None:
     """Télécharge le vector store depuis GCS vers CHROMA_DIR local."""
