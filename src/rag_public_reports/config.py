@@ -38,7 +38,7 @@ EMBEDDING_MODEL    = "models/gemini-embedding-001"
 # LLM : Claude génère les réponses à partir des chunks récupérés.
 # La clé API est lue automatiquement depuis ANTHROPIC_API_KEY dans le .env.
 LLM_PROVIDER = "anthropic"
-LLM_MODEL    = os.environ.get("CLAUDE_MODEL", "claude-3-5-sonnet-latest")
+LLM_MODEL    = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 #                              ↑ on lit depuis le .env, avec une valeur par défaut
 #                                au cas où la variable serait absente
 
