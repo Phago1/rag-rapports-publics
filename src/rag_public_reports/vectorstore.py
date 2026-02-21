@@ -3,9 +3,7 @@ vectorstore.py
 --------------
 Crée, charge et interroge le vector store Chroma avec Gemini embeddings.
 
-Chroma stocke sur disque : une fois les embeddings calculés, tu ne repasses
-plus par l'API d'embedding (c'est là que tu économises de l'argent !).
-
+Chroma stocke sur disque et sur GCS 
 Utilisation rapide :
     from rag_public_reports.vectorstore import get_vector_store, add_documents
 
@@ -19,7 +17,40 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_core.documents import Document
 
 from .config import CHROMA_DIR, EMBEDDING_MODEL, TOP_K
+import os
+from google.oauth2 import service_account
+from google.cloud import storage as gcs
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Recuparation vectorstore - local or GCS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _is_cloud() -> bool:
+    """Détecte si on tourne sur Streamlit Cloud."""
+    return os.environ.get("STREAMLIT_SHARING_MODE") == "streamlit_sharing"
+
+def _download_from_gcs() -> None:
+    """Télécharge le vector store depuis GCS vers CHROMA_DIR local."""
+    import streamlit as st
+
+    # Récupère les credentials depuis les secrets Streamlit
+    creds_dict = dict(st.secrets["gcs_credentials"])
+    credentials = service_account.Credentials.from_service_account_info(creds_dict)
+    client = gcs.Client(credentials=credentials)
+
+    bucket = client.bucket("rag-rapports-publics-chroma")
+    blobs = bucket.list_blobs(prefix="vectorstore/")
+
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    for blob in blobs:
+        # Reconstitue le chemin local
+        relative = blob.name.replace("vectorstore/", "", 1)
+        if not relative:
+            continue
+        local_path = CHROMA_DIR / relative
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        blob.download_to_filename(str(local_path))
+    print("☁️  Vector store téléchargé depuis GCS")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Embeddings Gemini
@@ -45,18 +76,18 @@ def get_vector_store(collection_name: str = "rapports_publics") -> Chroma:
     Le dossier CHROMA_DIR est défini dans config.py.
     La collection regroupe tous tes rapports ensemble.
     """
-    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+    if _is_cloud():
+            _download_from_gcs()
 
+    CHROMA_DIR.mkdir(parents=True, exist_ok=True)
     vector_store = Chroma(
         collection_name=collection_name,
         embedding_function=_get_embeddings(),
         persist_directory=str(CHROMA_DIR),
     )
-
     count = vector_store._collection.count()
     print(f"🗄️  Vector store chargé — {count} chunks en base")
     return vector_store
-
 
 def add_documents(vector_store: Chroma, chunks: list[Document]) -> list[str]:
     """
