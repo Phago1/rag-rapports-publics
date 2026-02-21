@@ -15,3 +15,6 @@ pypdf==6.7.1
 streamlit==1.54.0
 -e .
 google-cloud-storage
+requests
+beautifulsoup4
+feedparser

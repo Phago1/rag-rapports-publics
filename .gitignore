@@ -18,3 +18,5 @@ data/vectorstore/
 
 # Streamlit
 .streamlit/secrets.toml
+gcs-key.json
+
