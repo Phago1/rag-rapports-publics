@@ -29,3 +29,15 @@ with open(catalogue, encoding="utf-8-sig") as f:
             continue
         chunks = ingest_pdf(pdf, row["institution"], int(row["year"]), row["title"], row["theme"])
         add_documents(vs, chunks)
+
+# Synchronisation automatique vers GCS
+import subprocess
+print("\n☁️  Synchronisation vers GCS...")
+result = subprocess.run(
+    ["gsutil", "-m", "rsync", "-r", "data/vectorstore/", "gs://rag-rapports-publics-chroma/vectorstore/"],
+    capture_output=True, text=True
+)
+if result.returncode == 0:
+    print("✅ Base synchronisée sur GCS")
+else:
+    print(f"❌ Erreur GCS : {result.stderr}")

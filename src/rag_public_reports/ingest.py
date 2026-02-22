@@ -17,7 +17,15 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
 from .config import CHUNK_SIZE, CHUNK_OVERLAP
+import unicodedata
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Traitement des titres
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _normalize(text: str) -> str:
+    """Minuscules + suppression des accents pour comparaison souple."""
+    return unicodedata.normalize("NFD", text.lower()).encode("ascii", "ignore").decode()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Chargement du PDF
@@ -80,7 +88,7 @@ _PATTERNS_COUR_DES_COMPTES = [
 
     # Titres sans numéro, entièrement en majuscules (4 à 80 chars)
     # "SYNTHÈSE", "INTRODUCTION", "RÉCAPITULATIF DES RECOMMANDATIONS"
-    r"^[A-ZÀÂÉÈÊËÎÏÔÙÛÜ][A-ZÀÂÉÈÊËÎÏÔÙÛÜ\s\-–:]{3,79}$",
+    r"^(?:[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]+[\s\-–:]+){2,}[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]{2,}$",
 ]
 
 # Patterns IGF
@@ -101,7 +109,7 @@ _PATTERNS_IGF = [
 
     # Titres sans numéro, entièrement en majuscules
     # "INTRODUCTION", "SYNTHÈSE"
-    r"^[A-ZÀÂÉÈÊËÎÏÔÙÛÜ][A-ZÀÂÉÈÊËÎÏÔÙÛÜ\s\-–:]{3,79}$",
+    r"^(?:[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]+[\s\-–:]+){2,}[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]{2,}$",
 ]
 
 # Patterns génériques — utilisés pour les autres institutions (CGE, IGAS, etc.)
@@ -122,7 +130,7 @@ _PATTERNS_GENERIQUES = [
     r"^\d+(\.\d+)*\.?\s+[A-ZÀÂÉÈÊËÎÏÔÙÛÜ].{3,}",
 
     # Titres sans numéro en majuscules
-    r"^[A-ZÀÂÉÈÊËÎÏÔÙÛÜ][A-ZÀÂÉÈÊËÎÏÔÙÛÜ\s\-–:]{3,79}$",
+    r"^(?:[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]+[\s\-–:]+){2,}[A-ZÀÂÉÈÊËÎÏÔÙÛÜ]{2,}$",
 ]
 
 # Table de correspondance institution → patterns
@@ -176,32 +184,48 @@ def _get_patterns(institution: str) -> list:
     return [re.compile(p, re.MULTILINE) for p in raw_patterns]
 
 
-def _detect_section_title(text: str, compiled_patterns: list) -> str | None:
+def _detect_section_title(
+    text: str,
+    compiled_patterns: list,
+    title: str = "",
+) -> str | None:
     """
     Parcourt toutes les lignes non vides du texte pour détecter un titre.
     Retourne le PREMIER titre trouvé (tronqué à 120 chars), ou None.
 
-    Pourquoi toutes les lignes et pas seulement les premières ?
-    Dans les rapports institutionnels, un titre de section peut apparaître
-    n'importe où dans la page — pas seulement en haut. Par exemple un
-    sous-titre de niveau 2 ou 3 peut se trouver au milieu d'une page
-    après le texte de la section précédente.
+    Garde-fous appliqués pour éviter les faux positifs :
+    - 1 mot de 5 chars ou moins → acronyme ou bruit (ex: "FTAP")
+    - Ligne qui finit par un numéro isolé → header de page (ex: "DINUM   41")
+    - Ligne répétée dans le texte de la page → header imprimé en en-tête
+    - Ligne qui contient le titre du rapport → header récurrent inter-pages
     """
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     for line in lines:
         for pattern in compiled_patterns:
             if pattern.match(line):
+                # Garde-fou 1 : acronyme trop court
+                if len(line.split()) == 1 and len(line) <= 5:
+                    continue
+                # Garde-fou 2 : finit par un numéro de page
+                if re.search(r'\s+\d{1,3}\s*$', line):
+                    continue
+                # Garde-fou 3 : répété dans la même page
+                if text.count(line[:40]) > 1:
+                    continue
+                # Garde-fou 4 : contient le titre du rapport (header inter-pages)
+                if title and _normalize(line) in _normalize(title):
+                    continue
                 return line[:120]
     return None
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stratégie 1 : Chunking par sections
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _chunk_by_sections(doc: Document, institution: str) -> list[Document]:
+def _chunk_by_sections(pages: list[Document], institution: str, title: str = "") -> list[Document]:
     """
-    Découpe le document complet en respectant les titres de sections.
+    Découpe le document en respectant les titres de sections.
+    Utilise les patterns adaptés à l'institution.
     """
     compiled_patterns = _get_patterns(institution)
 
@@ -214,48 +238,45 @@ def _chunk_by_sections(doc: Document, institution: str) -> list[Document]:
 
     sections: list[Document] = []
     current_text = ""
+    current_page_meta = pages[0].metadata.copy() if pages else {}
     current_section_title = None
     section_index = 0
 
-    lines = doc.page_content.split("\n")
-
-    def _flush_section(text: str, title: str | None, idx: int):
+    def _flush_section(text: str, meta: dict, title_: str | None, idx: int):
         text = text.strip()
         if not text:
             return
-        chunk = Document(
+        doc = Document(
             page_content=text,
-            metadata={
-                **doc.metadata,          # conserve source, etc.
-                "section": title or "",
-                "section_index": idx,
-            },
+            metadata={**meta, "section": title_ or "", "section_index": idx},
         )
         if len(text) > CHUNK_SIZE * 2:
-            sub_chunks = recursive_splitter.split_documents([chunk])
+            sub_chunks = recursive_splitter.split_documents([doc])
             for sc in sub_chunks:
-                sc.metadata.setdefault("section", title or "")
+                sc.metadata.setdefault("section", title_ or "")
                 sc.metadata.setdefault("section_index", idx)
             sections.extend(sub_chunks)
         else:
-            sections.append(chunk)
+            sections.append(doc)
 
-    for line in lines:
-        line_stripped = re.sub(r"\s+", " ", line).strip()  # nettoyage espaces parasites
-        detected = _detect_section_title(line_stripped, compiled_patterns)
+    for page in pages:
+        # 🆕 title passé au garde-fou 4
+        detected = _detect_section_title(page.page_content, compiled_patterns, title)
 
         if detected and current_text:
-            _flush_section(current_text, current_section_title, section_index)
+            _flush_section(current_text, current_page_meta, current_section_title, section_index)
             section_index += 1
-            current_text = line
+            current_text = page.page_content
             current_section_title = detected
+            current_page_meta = page.metadata.copy()
         else:
-            current_text += "\n" + line
+            current_text += "\n\n" + page.page_content
+            if detected and current_section_title is None:
+                current_section_title = detected
 
-    _flush_section(current_text, current_section_title, section_index)
+    _flush_section(current_text, current_page_meta, current_section_title, section_index)
 
     return sections
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stratégie 2 : Chunking récursif (fallback)
@@ -336,13 +357,13 @@ def ingest_pdf(
     print(f"    → {len(doc.page_content)} caractères chargés")
 
     if strategy == "sections":
-        chunks = _chunk_by_sections(doc, institution)
+        pages = _load_pdf_page_by_page(file_path)
+        print(f"    → {len(pages)} pages chargées")
+        chunks = _chunk_by_sections(pages, institution, title=title)  # 🆕 title=title
     else:
+        doc = _load_pdf_as_single_doc(file_path)
         chunks = _chunk_recursive(doc)
 
-    chunks = _add_metadata(chunks, institution, year, title, theme, file_path)
-    chunks = [c for c in chunks if len(c.page_content.strip()) > 150]
-    
     # Bilan
     avg_len = sum(len(c.page_content) for c in chunks) // len(chunks) if chunks else 0
     sections_detected = sum(1 for c in chunks if c.metadata.get("section"))

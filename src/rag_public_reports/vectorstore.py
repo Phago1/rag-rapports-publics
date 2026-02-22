@@ -162,6 +162,7 @@ def search(
     if where:
         kwargs["filter"] = where
 
-    results = vector_store.similarity_search(query, **kwargs)
+    #results = vector_store.similarity_search(query, **kwargs)
+    results = vector_store.max_marginal_relevance_search(query, k=k, fetch_k=k*3)
     print(f"🔍 {len(results)} chunks récupérés")
     return results
