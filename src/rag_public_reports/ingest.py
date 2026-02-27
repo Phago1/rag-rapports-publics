@@ -353,9 +353,6 @@ def ingest_pdf(
 
     print(f"📄  Chargement : {file_path.name}  [stratégie : {strategy}]")
 
-    doc = _load_pdf_as_single_doc(file_path)
-    print(f"    → {len(doc.page_content)} caractères chargés")
-
     if strategy == "sections":
         pages = _load_pdf_page_by_page(file_path)
         print(f"    → {len(pages)} pages chargées")
@@ -363,6 +360,9 @@ def ingest_pdf(
     else:
         doc = _load_pdf_as_single_doc(file_path)
         chunks = _chunk_recursive(doc)
+
+    # 🆕 Enrichissement des métadonnées — NE PAS OUBLIER
+    chunks = _add_metadata(chunks, institution, year, title, theme, file_path)
 
     # Bilan
     avg_len = sum(len(c.page_content) for c in chunks) // len(chunks) if chunks else 0
