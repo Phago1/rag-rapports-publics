@@ -36,7 +36,7 @@ if st.button("Envoi", type="primary"):
         st.warning("Saisissez une question")
     else:
         with st.spinner("Recherche en cours..."):
-            reponse = answer(
+            reponse, sources = answer(
                 question,
                 filter_institution=None if institution == "Toutes" else institution,
                 filter_theme=None if theme == "Tous" else theme,
@@ -44,3 +44,13 @@ if st.button("Envoi", type="primary"):
                 vs=vs,
             )
         st.markdown(reponse)
+
+        with st.expander("📄 Sources mobilisées"):
+            for doc in sources:
+                m = doc.metadata
+                st.markdown(
+                    f"**{m.get('title', 'N/A')}** ({m.get('institution', '?')}, {m.get('year', '?')})"
+                    f" — *{m.get('section', 'section inconnue')}*"
+                )
+                st.caption(doc.page_content[:300] + "…")
+                st.divider()

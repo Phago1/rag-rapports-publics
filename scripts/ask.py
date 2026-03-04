@@ -10,10 +10,12 @@ parser.add_argument("--theme", type=str, default=None)
 parser.add_argument("--verbose", action="store_true")
 args = parser.parse_args()
 
-print(answer(
+reponse, sources = answer(
     args.question,
     filter_institution=args.institution,
     filter_year=args.year,
     filter_theme=args.theme,
     verbose=args.verbose,
-))
+)
+
+print(reponse)

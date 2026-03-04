@@ -108,4 +108,4 @@ def answer(
     llm = _get_llm()
     response = llm.invoke(prompt)
 
-    return response.content
+    return response.content, docs 
