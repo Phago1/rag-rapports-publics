@@ -14,7 +14,11 @@ st.set_page_config(
 # ─── Chargement du vector store (une seule fois) ──────────────────────────────
 @st.cache_resource
 def load_vs():
-    return get_vector_store()
+    try:
+        return get_vector_store()
+    except Exception as e:
+        st.error(f"⚠️ Impossible de charger le vectorstore : {e}")
+        return None
 
 vs = load_vs()
 
@@ -26,6 +30,8 @@ with st.sidebar:
     st.header("Filtres")
     institution = st.selectbox("Institution", ["Toutes"] + KNOWN_INSTITUTIONS)
     theme = st.selectbox("Thème", ["Tous"] + KNOWN_THEMES)
+    year_options = ["Toutes"] + list(range(2026, 2018, -1))
+    year = st.selectbox("Année", year_options)
 
 # Inputs utilisateur
 titre = st.text_input(
@@ -41,25 +47,44 @@ notes = st.text_area(
 
 if st.button("Rédiger", type="primary"):
     if not titre:
-        st.warning("Saisis un titre de section !")
+        st.warning("Saisir un titre de section")
     elif not notes:
-        st.warning("Saisis des notes de terrain !")
+        st.warning("Saisir des notes de terrain")
+    elif vs is None:
+        st.error("⚠️ Le vectorstore n'est pas disponible. Réessayez dans quelques instants.")
     else:
-        with st.spinner("Rédaction en cours..."):
-            reponse = answer(
-                titre,
-                notes=notes,
-                filter_institution=None if institution == "Toutes" else institution,
-                filter_theme=None if theme == "Tous" else theme,
-                mode="redaction",
-                vs=vs,
-            )
-        st.markdown(reponse)
+        try:
+            with st.spinner("Rédaction en cours..."):
+                reponse, sources = answer(
+                    titre,
+                    notes=notes,
+                    filter_institution=None if institution == "Toutes" else institution,
+                    filter_year=None if year == "Toutes" else int(year),
+                    filter_theme=None if theme == "Tous" else theme,
+                    mode="redaction",
+                    vs=vs,
+                )
+            st.markdown(reponse)
 
-        # Bouton de copie
-        st.download_button(
-            label="📥 Télécharger en .txt",
-            data=reponse,
-            file_name=f"{titre[:50].replace(' ', '_')}.txt",
-            mime="text/plain",
-        )
+            with st.expander("📄 Sources mobilisées"):
+                for doc in sources:
+                    m = doc.metadata
+                    st.markdown(
+                        f"**{m.get('title', 'N/A')}** "
+                        f"({m.get('institution', '?')}, {m.get('year', '?')})"
+                        f" — *{m.get('section', 'section inconnue')}*"
+                    )
+                    st.caption(doc.page_content[:300] + "…")
+                    st.divider()
+
+            # Bouton de téléchargement
+            st.download_button(
+                label="📥 Télécharger en .txt",
+                data=reponse,
+                file_name=f"{titre[:50].replace(' ', '_')}.txt",
+                mime="text/plain",
+            )
+
+        except Exception as e:
+            st.error(f"⚠️ Une erreur est survenue : {e}")
+            st.info("Conseil : élargissez les filtres ou reformulez le titre.")

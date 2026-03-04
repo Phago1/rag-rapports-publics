@@ -26,6 +26,8 @@ with st.sidebar:
     st.header("Filtres")
     institution = st.selectbox("Institution", ["Toutes"] + KNOWN_INSTITUTIONS)
     theme = st.selectbox("Thème", ["Tous"] + KNOWN_THEMES)
+    year_options = ["Toutes"] + list(range(2026, 2018, -1))
+    year = st.selectbox("Année", year_options)
     mode = st.selectbox("Mode", ["rag", "synthesis"])
 
 # Zone de question
@@ -34,23 +36,32 @@ question = st.text_input("Votre question", placeholder="Ex : Quelles sont les re
 if st.button("Envoi", type="primary"):
     if not question:
         st.warning("Saisissez une question")
+    elif vs is None:
+        st.error("⚠️ Le vectorstore n'est pas disponible. Réessayez dans quelques instants.")
     else:
-        with st.spinner("Recherche en cours..."):
-            reponse, sources = answer(
-                question,
-                filter_institution=None if institution == "Toutes" else institution,
-                filter_theme=None if theme == "Tous" else theme,
-                mode=mode,
-                vs=vs,
-            )
-        st.markdown(reponse)
-
-        with st.expander("📄 Sources mobilisées"):
-            for doc in sources:
-                m = doc.metadata
-                st.markdown(
-                    f"**{m.get('title', 'N/A')}** ({m.get('institution', '?')}, {m.get('year', '?')})"
-                    f" — *{m.get('section', 'section inconnue')}*"
+        try:
+            with st.spinner("Recherche en cours..."):
+                reponse, sources = answer(
+                    question,
+                    filter_institution=None if institution == "Toutes" else institution,
+                    filter_year=None if year == "Toutes" else int(year),
+                    filter_theme=None if theme == "Tous" else theme,
+                    mode=mode,
+                    vs=vs,
                 )
-                st.caption(doc.page_content[:300] + "…")
-                st.divider()
+            st.markdown(reponse)
+
+            with st.expander("📄 Sources mobilisées"):
+                for doc in sources:
+                    m = doc.metadata
+                    st.markdown(
+                        f"**{m.get('title', 'N/A')}** "
+                        f"({m.get('institution', '?')}, {m.get('year', '?')})"
+                        f" — *{m.get('section', 'section inconnue')}*"
+                    )
+                    st.caption(doc.page_content[:300] + "…")
+                    st.divider()
+
+        except Exception as e:
+            st.error(f"⚠️ Une erreur est survenue : {e}")
+            st.info("Conseil : élargissez les filtres ou reformulez la question.")
